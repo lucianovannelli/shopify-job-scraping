@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+data.json
+.system_generated/
+.gemini/

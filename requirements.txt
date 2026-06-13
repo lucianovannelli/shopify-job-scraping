@@ -1,0 +1,5 @@
+python-jobspy
+google-generativeai
+boto3
+pydantic
+pandas
