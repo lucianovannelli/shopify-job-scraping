@@ -195,34 +195,43 @@ def main():
         Ensure that shopify_focus is strictly one of: theme, app_dev, plus, headless, general.
         """
         
-        try:
-            # Add delay to avoid rate limiting
-            time.sleep(2)
-            
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=shopify_job_post_schema
-                )
-            )
-            
-            structured_data = json.loads(response.text)
-            
-            # Fill mandatory/system fields
-            structured_data["id"] = job_id
-            structured_data["scraped_at"] = scraped_at_timestamp
-            structured_data["url"] = job["url"]
-            if not structured_data["source"]:
-                structured_data["source"] = job["site"] or "unknown"
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Add delay to avoid rate limiting (5 seconds keeps us under 12 RPM)
+                time.sleep(5)
                 
-            existing_jobs[job_id] = structured_data
-            processed_count += 1
-            print(f"Successfully processed job: {structured_data['title']} ({structured_data['shopify_focus']}/{structured_data['role_type']})")
-            
-        except Exception as e:
-            print(f"Error processing job with Gemini API: {e}")
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=shopify_job_post_schema
+                    )
+                )
+                
+                structured_data = json.loads(response.text)
+                
+                # Fill mandatory/system fields
+                structured_data["id"] = job_id
+                structured_data["scraped_at"] = scraped_at_timestamp
+                structured_data["url"] = job["url"]
+                if not structured_data["source"]:
+                    structured_data["source"] = job["site"] or "unknown"
+                    
+                existing_jobs[job_id] = structured_data
+                processed_count += 1
+                print(f"Successfully processed job: {structured_data['title']} ({structured_data['shopify_focus']}/{structured_data['role_type']})")
+                break  # Exit retry loop on success
+                
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    print(f"Rate limit hit on attempt {attempt+1}/{max_retries}. Sleeping 60s before retry...")
+                    time.sleep(60)
+                else:
+                    print(f"Error processing job with Gemini API: {e}")
+                    break  # Exit retry loop on other errors
             
     print(f"Done processing. Added {processed_count} new jobs.")
     
