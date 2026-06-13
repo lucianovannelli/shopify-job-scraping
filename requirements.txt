@@ -1,5 +1,5 @@
 python-jobspy
-google-generativeai
+google-genai
 boto3
 pydantic
 pandas

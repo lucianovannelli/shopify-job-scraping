@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import boto3
 from botocore.exceptions import ClientError
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from jobspy import scrape_jobs
 
 # 1. JSON Schema for structured output
@@ -75,7 +76,7 @@ def main():
         print("ERROR: GEMINI_API_KEY environment variable is not set.")
         sys.exit(1)
         
-    genai.configure(api_key=gemini_key)
+    client = genai.Client(api_key=gemini_key)
     
     # R2 configuration check
     r2_endpoint = os.environ.get("R2_ENDPOINT_URL")
@@ -166,7 +167,6 @@ def main():
             print(f"Unexpected error loading existing data: {e}")
             
     # 4. Extract structured data with Gemini API
-    model = genai.GenerativeModel('gemini-1.5-flash')
     processed_count = 0
     
     scraped_at_timestamp = datetime.utcnow().isoformat() + "Z"
@@ -199,9 +199,10 @@ def main():
             # Add delay to avoid rate limiting
             time.sleep(2)
             
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=shopify_job_post_schema
                 )
