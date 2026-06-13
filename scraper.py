@@ -7,29 +7,56 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import BaseModel, Field
 import google.generativeai as genai
 from jobspy import scrape_jobs
 
-# 1. Pydantic schema for structured output
-class ShopifyJobPost(BaseModel):
-    id: str = Field(description="Unique hash of the job URL")
-    scraped_at: str = Field(description="ISO 8601 format timestamp of when the job was scraped")
-    source: str = Field(description="The source site (e.g. linkedin, indeed, zip_recruiter, glassdoor)")
-    url: str = Field(description="URL of the job posting")
-    title: str = Field(description="Job title")
-    company: str = Field(description="Company name")
-    location: str = Field(description="Location of the job (city, state/country)")
-    remote: bool = Field(description="True if remote, False otherwise")
-    seniority: str = Field(description="Seniority level. Must be exactly one of: junior, mid, senior, lead, not_specified")
-    role_type: str = Field(description="Role type. Must be exactly one of: developer, designer, pm, marketer, analyst, other")
-    shopify_focus: str = Field(description="Primary Shopify focus. Must be exactly one of: theme, app_dev, plus, headless, general")
-    technologies: List[str] = Field(description="List of technologies mentioned (e.g. Liquid, React, Hydrogen, Tailwind, Node.js, Ruby, Remix)")
-    soft_skills: List[str] = Field(description="List of soft skills mentioned (e.g. communication, project management, problem solving)")
-    salary_min: Optional[float] = Field(None, description="Minimum salary in the posting, if listed. Otherwise null.")
-    salary_max: Optional[float] = Field(None, description="Maximum salary in the posting, if listed. Otherwise null.")
-    salary_currency: Optional[str] = Field(None, description="ISO currency code for the salary (e.g. USD, EUR, GBP). Otherwise null.")
-    raw_description: str = Field(description="Full or summarized description text of the job posting")
+# 1. JSON Schema for structured output
+shopify_job_post_schema = {
+    "type": "OBJECT",
+    "properties": {
+        "id": {"type": "STRING", "description": "Unique hash of the job URL"},
+        "scraped_at": {"type": "STRING", "description": "ISO 8601 format timestamp of when the job was scraped"},
+        "source": {"type": "STRING", "description": "The source site (e.g. linkedin, indeed, zip_recruiter, glassdoor)"},
+        "url": {"type": "STRING", "description": "URL of the job posting"},
+        "title": {"type": "STRING", "description": "Job title"},
+        "company": {"type": "STRING", "description": "Company name"},
+        "location": {"type": "STRING", "description": "Location of the job (city, state/country)"},
+        "remote": {"type": "BOOLEAN", "description": "True if remote, False otherwise"},
+        "seniority": {
+            "type": "STRING",
+            "description": "Seniority level. Must be exactly one of: junior, mid, senior, lead, not_specified",
+            "enum": ["junior", "mid", "senior", "lead", "not_specified"]
+        },
+        "role_type": {
+            "type": "STRING",
+            "description": "Role type. Must be exactly one of: developer, designer, pm, marketer, analyst, other",
+            "enum": ["developer", "designer", "pm", "marketer", "analyst", "other"]
+        },
+        "shopify_focus": {
+            "type": "STRING",
+            "description": "Primary Shopify focus. Must be exactly one of: theme, app_dev, plus, headless, general",
+            "enum": ["theme", "app_dev", "plus", "headless", "general"]
+        },
+        "technologies": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"},
+            "description": "List of technologies mentioned (e.g. Liquid, React, Hydrogen, Tailwind, Node.js, Ruby, Remix)"
+        },
+        "soft_skills": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"},
+            "description": "List of soft skills mentioned (e.g. communication, project management, problem solving)"
+        },
+        "salary_min": {"type": "NUMBER", "description": "Minimum salary in the posting, if listed. Otherwise null."},
+        "salary_max": {"type": "NUMBER", "description": "Maximum salary in the posting, if listed. Otherwise null."},
+        "salary_currency": {"type": "STRING", "description": "ISO currency code for the salary (e.g. USD, EUR, GBP). Otherwise null."},
+        "raw_description": {"type": "STRING", "description": "Full or summarized description text of the job posting"}
+    },
+    "required": [
+        "id", "scraped_at", "source", "url", "title", "company", "location", "remote",
+        "seniority", "role_type", "shopify_focus", "technologies", "soft_skills", "raw_description"
+    ]
+}
 
 def get_hash(val: str) -> str:
     return hashlib.md5(val.encode('utf-8')).hexdigest()
@@ -176,7 +203,7 @@ def main():
                 prompt,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
-                    response_schema=ShopifyJobPost
+                    response_schema=shopify_job_post_schema
                 )
             )
             
