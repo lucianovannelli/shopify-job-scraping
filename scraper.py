@@ -185,8 +185,13 @@ def main():
 
     processed_count = 0
     scraped_at_timestamp = datetime.utcnow().isoformat() + "Z"
+    consecutive_rate_limits = 0
+    quota_exhausted = False
     
     for dedup_key, job in unique_raw_jobs.items():
+        if quota_exhausted:
+            break
+            
         url_hash = get_hash(job["url"])
         
         # Skip if we already have it in the database by URL hash or by title/company
@@ -231,6 +236,7 @@ def main():
                 # Check if Gemini classified this job as Shopify-related
                 if not structured_data.get("shopify_related", True):
                     print(f"Skipping job (not Shopify related): {job['title']} at {job['company']}")
+                    consecutive_rate_limits = 0
                     break  # Discard and break retry loop
                 
                 # Fill mandatory/system fields
@@ -242,16 +248,23 @@ def main():
                     
                 existing_jobs[url_hash] = structured_data
                 processed_count += 1
+                consecutive_rate_limits = 0
                 print(f"Successfully processed job: {structured_data['title']} ({structured_data['shopify_focus']}/{structured_data['role_type']})")
                 break  # Exit retry loop on success
                 
             except Exception as e:
                 err_str = str(e)
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    consecutive_rate_limits += 1
+                    if consecutive_rate_limits >= 3:
+                        print("ERROR: Rate limit hit 3 times consecutively. Daily API quota is likely exhausted. Saving progress and exiting...")
+                        quota_exhausted = True
+                        break
                     print(f"Rate limit hit on attempt {attempt+1}/{max_retries}. Sleeping 60s before retry...")
                     time.sleep(60)
                 else:
                     print(f"Error processing job with Gemini API: {e}")
+                    consecutive_rate_limits = 0
                     break  # Exit retry loop on other errors
             
     print(f"Done processing. Added {processed_count} new jobs.")
